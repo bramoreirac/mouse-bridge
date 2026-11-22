@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mousebridge"
+version = "0.1.0"
+description = "Read-only Windows to GNOME mouse settings comparison"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.scripts]
+mousebridge = "mousebridge:main"
+
+[tool.setuptools]
+py-modules = ["mousebridge"]
