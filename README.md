@@ -6,6 +6,8 @@ MouseBridge is a read-only Python CLI for comparing Windows mouse pointer settin
 
 Use the same external mouse, DPI preset, and connection mode on both systems. Record the mouse model, active DPI and polling rate, and display scaling for each OS. Keep your preferred settings during the baseline capture.
 
+To estimate the polling rate, open the [Mouse Polling Rate Test](https://webcammictest.com/mouse/polling-rate/) in your browser. Move the mouse in continuous circles over the test area for a few seconds, then record the **Likely rate** in Hz. The browser can underreport the rate, especially for high-polling-rate mice. This test gave the 125 Hz reading used in the saved Windows baseline.
+
 1. In Windows, open PowerShell in this folder under your normal desktop account.
 
    ```powershell
