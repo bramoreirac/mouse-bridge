@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "kind": "gnome",
+  "desktop": "ubuntu:GNOME",
+  "session_type": "wayland",
+  "speed": 0.2,
+  "accel_profile": "flat"
+}
