@@ -63,11 +63,56 @@ Pointer speed is zero at rest. The modeled gain crosses **1 px/count at 4.7500 c
 
 The values and crossover were checked against the saved bytes. The published analysis audited builds `26100.3194` and `28000.2525`. A cursor trace from build `26200` is still needed to validate the model on this setup. Integer report counts, fixed-point rounding, subpixel remainders, and one-report gain blending when entering a higher segment can affect individual swipes.
 
+### Generate the plots
+
+Install Pillow in a virtual environment and run the standalone plotter from the project directory.
+
+```sh
+python -m pip install "Pillow>=10.1"
+python plot-wincurves.py windows-mouse.json --display-scale 125 --dpi 2400 --polling-rate 125
+```
+
+The script generates `windows-curves.png` with full-range and low-speed views. Both use modeled horizontal hand speed in cm/s on the X axis. The registry-derived curve shows modeled pointer speed in px/s on the Y axis, and the gain curve shows pointer pixels per raw count. The script reads pointer sensitivity from the snapshot. Use `--output another-name.png` for a different filename. The script requires a new output file.
+
 ### Recheck the Windows baseline
 
 1. Confirm **Enhance pointer precision** is checked under **Additional mouse settings > Pointer Options**.
 2. Confirm **125% display scaling** on the monitor used for testing and **2400 DPI / 125 Hz** in the active mouse profile.
 3. Export to a fresh file with `py -3 mousebridge.py export -o windows-mouse-verification.json`. Compare the build, `MouseSensitivity`, `MouseSpeed`, and both curve blobs with the original snapshot.
+
+## Generate a libinput custom curve
+
+```sh
+python3 mousebridge.py libinput-curve windows-mouse.json --display-scale 125 --polling-rate 125 -o libinput-curve.json
+```
+
+The command previews a GNOME custom motion curve as JSON with `pointer-step` and `pointer-speeds`. It models the Windows EPP-on behavior for the same mouse, DPI preset, and polling rate on both systems. At 125 Hz, motion at `u` raw counts/ms corresponds to about `8 × u` counts per Windows report. For this baseline, the target output speed is `f(8 × u / 3.5) / 8`. The table samples through the last change in slope and includes one more sample so libinput can extrapolate the final segment. Compare measured cursor travel to calibrate the effect of compositor display scaling and event timing. [libinput custom profile documentation](https://wayland.freedesktop.org/libinput/doc/1.29.0/pointer-acceleration.html#the-custom-acceleration-profile)
+
+Check `gsettings range org.gnome.desktop.peripherals.mouse accel-profile` and `gsettings list-keys org.gnome.desktop.peripherals.mouse` before planning to use the preview. GNOME needs both the `custom` profile and the `custom-accel-config` key. The Ubuntu GNOME 50.1 session checked for this baseline exposes `default`, `flat`, and `adaptive`. The command generates the preview offline and makes no desktop changes. [Upstream GNOME mouse schema](https://github.com/GNOME/gsettings-desktop-schemas/blob/main/schemas/org.gnome.desktop.peripherals.gschema.xml.in)
+
+## Try GNOME's built-in adaptive profile
+
+On GNOME Wayland, try **adaptive** at speed **+0.15** to see whether the built-in profile feels close enough for everyday use. This was the closest modeled fit for the saved Windows EPP baseline over **0.1–18.52 cm/s**, weighting equal intervals on the logarithmic speed axis equally. The fit assumes the same **2400 DPI** mouse preset and the **1000 DPI** fallback libinput uses when the device has no `MOUSE_DPI` property. Other devices and setups may need a different setting. [libinput 1.31.1 adaptive profile source](https://chromium.googlesource.com/external/gitlab.freedesktop.org/libinput/libinput/+/refs/tags/upstream/1.31.1/src/filter-mouse.c)
+
+From a terminal in your GNOME Wayland session, save your current values and apply the trial setting:
+
+```sh
+schema=org.gnome.desktop.peripherals.mouse
+previous_profile=$(gsettings get "$schema" accel-profile)
+previous_speed=$(gsettings get "$schema" speed)
+printf 'Previous profile %s, previous speed %s\n' "$previous_profile" "$previous_speed"
+gsettings set "$schema" accel-profile adaptive
+gsettings set "$schema" speed 0.15
+```
+
+Try slow adjustments, ordinary movements, and quick swipes. The model predicts higher gain than Windows at **1–2 cm/s** and lower gain on fast swipes. For example, at **1 cm/s** the modeled gains are **1.71** for GNOME and **1.23** for Windows. At **10 cm/s** they are **2.23** and **3.01**, respectively. These figures compare motion per raw count before GNOME display scaling. Desktop cursor travel was not measured.
+
+To restore your previous values, run this in the same terminal:
+
+```sh
+gsettings set "$schema" accel-profile "$previous_profile"
+gsettings set "$schema" speed "$previous_speed"
+```
 
 ## How to read the comparison
 

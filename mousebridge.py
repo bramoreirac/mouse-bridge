@@ -1,11 +1,14 @@
 """Read-only Windows and GNOME mouse settings snapshots and comparison."""
 
 import argparse
+from bisect import bisect_right
+import math
 import json
 import os
 import platform
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 
@@ -14,7 +17,7 @@ REGISTRY_KEY = r"Control Panel\Mouse"
 REGISTRY_NUMBERS = ("MouseSensitivity", "MouseSpeed", "MouseThreshold1", "MouseThreshold2")
 CURVES = ("SmoothMouseXCurve", "SmoothMouseYCurve")
 SCHEMA = "org.gnome.desktop.peripherals.mouse"
-PROFILES = ("default", "flat", "adaptive")
+PROFILES = ("default", "flat", "adaptive", "custom")
 
 
 def snapshot(kind, **fields):
@@ -113,7 +116,7 @@ def validate(data, kind):
         if type(speed) not in (int, float) or not -1 <= speed <= 1:
             raise ValueError("GNOME speed must be a number from -1 to 1.")
         if data.get("accel_profile") not in PROFILES:
-            raise ValueError("GNOME accel-profile must be default, flat, or adaptive.")
+            raise ValueError("GNOME accel-profile must be default, flat, adaptive, or custom.")
         if data.get("session_type") != "wayland":
             raise ValueError("Expected a GNOME Wayland snapshot.")
     return data
@@ -124,6 +127,60 @@ def load_snapshot(path, kind):
         return validate(json.loads(path.read_text(encoding="utf-8-sig")), kind)
     except ValueError as error:
         raise ValueError(f"{path}: {error}") from error
+
+
+def decode_curve(registry):
+    axes = []
+    for key in CURVES:
+        raw = bytes.fromhex(registry.get(key) or "")
+        if len(raw) != 40:
+            raise ValueError(f"{key} must contain five 8-byte coordinates.")
+        values = struct.unpack("<5Q", raw)
+        if any(value > 0xFFFFFFFF for value in values):
+            raise ValueError(f"{key} contains a coordinate outside the 16.16 range.")
+        axes.append([value / 65536 for value in values])
+    xs, ys = axes
+    if (xs[0], ys[0]) != (0, 0) or any(a >= b for a, b in zip(xs, xs[1:])):
+        raise ValueError("The curve must start at (0, 0) and have increasing X coordinates.")
+    return xs, ys
+
+
+def interpolate(xs, ys, x):
+    index = min(bisect_right(xs, x) - 1, len(xs) - 2)
+    fraction = (x - xs[index]) / (xs[index + 1] - xs[index])
+    return ys[index] + fraction * (ys[index + 1] - ys[index])
+
+
+def positive_number(value):
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError("expected a finite positive number")
+    return number
+
+
+def epp_output_scale(registry, display_scale):
+    sensitivity = registry.get("MouseSensitivity")
+    if sensitivity not in range(1, 21):
+        raise ValueError("MouseSensitivity must be present and between 1 and 20.")
+    effective_dpi = 96 * (display_scale / 100)
+    return (max(effective_dpi, 96) / 120) * (sensitivity / 10)
+
+
+def libinput_curve(registry, display_scale, polling_rate):
+    xs, ys = decode_curve(registry)
+    y_scale = epp_output_scale(registry, display_scale)
+    reports_per_ms = polling_rate / 1000
+    # Sample through the last bend, then include one point on the final line
+    # so libinput extrapolates that line at higher speeds.
+    registry_step = xs[-2] / 62
+    step = registry_step * 3.5 * reports_per_ms
+    speeds = [
+        interpolate(xs, ys, registry_step * index) * y_scale * reports_per_ms
+        for index in range(64)
+    ]
+    if not math.isfinite(step) or step <= 0 or not all(map(math.isfinite, speeds)):
+        raise ValueError("Display scaling and polling rate must produce a finite curve with a positive step.")
+    return {"pointer-step": step, "pointer-speeds": speeds}
 
 
 def comparison(windows, gnome):
@@ -158,7 +215,7 @@ def comparison(windows, gnome):
         "",
         "The profile suggestion is a heuristic. Confirm Enhance pointer precision in Windows.",
         "GNOME may fall back to the device default if the profile is unsupported.",
-        "Windows curve bytes are archival. Measure pointer travel before judging similarity.",
+        "Use libinput-curve to preview a custom EPP-on profile. Measure pointer travel before judging similarity.",
     ])
     return "\n".join(lines)
 
@@ -186,12 +243,22 @@ def main(argv=None):
     analyze.add_argument("windows", type=Path, help="Windows export JSON")
     analyze.add_argument("--gnome", type=Path, help="GNOME snapshot JSON for offline comparison")
 
+    curve = commands.add_parser("libinput-curve", help="Generate a GNOME custom EPP-on curve without applying it")
+    curve.add_argument("windows", type=Path, help="Windows export JSON with EPP confirmed separately")
+    curve.add_argument("--display-scale", required=True, type=positive_number, metavar="PERCENT",
+                       help="Windows display scaling percentage")
+    curve.add_argument("--polling-rate", required=True, type=positive_number, metavar="HZ")
+    curve.add_argument("-o", "--output", type=Path, help="Write the curve JSON to a new file")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "analyze":
             windows = load_snapshot(args.windows, "windows")
             gnome = load_snapshot(args.gnome, "gnome") if args.gnome else collect_gnome()
             print(comparison(windows, gnome))
+        elif args.command == "libinput-curve":
+            windows = load_snapshot(args.windows, "windows")
+            write_snapshot(libinput_curve(windows["registry"], args.display_scale, args.polling_rate), args.output)
         else:
             data = collect_windows() if args.command == "export" else collect_gnome()
             write_snapshot(data, args.output)
