@@ -4,7 +4,7 @@ MouseBridge is a read-only Python CLI for comparing Windows mouse pointer settin
 
 ## Collect your baseline
 
-Use the same external mouse, DPI preset, and connection mode on both systems. Recd the mouse model, DPI if knorown, and display scaling for each OS. Keep your preferred settings during the baseline capture.
+Use the same external mouse, DPI preset, and connection mode on both systems. Record the mouse model, active DPI and polling rate, and display scaling for each OS. Keep your preferred settings during the baseline capture.
 
 1. In Windows, open PowerShell in this folder under your normal desktop account.
 
@@ -26,6 +26,46 @@ Use the same external mouse, DPI preset, and connection mode on both systems. Re
 3. Keep both JSON files and the comparison output together. Snapshot output takes a new filename so earlier baselines are preserved. To provide data for the next phase, share the two JSON files, the Enhance pointer precision checkbox state, and your setup notes.
 
 To install the CLI entry point, run `python -m pip install .` in a virtual environment and replace `python mousebridge.py` with `mousebridge`.
+
+## Saved baseline
+
+Enhance pointer precision (EPP) was enabled in Windows for the saved `windows-mouse.json` baseline, which records `MouseSensitivity=10` and `MouseSpeed=1`. The EPP checkbox state was confirmed separately. The export captures the registry settings and curve bytes.
+
+The saved `ubuntu-mouse.json` baseline uses GNOME Wayland with speed `0.2` and the `flat` profile. For this pair of snapshots, the comparison suggests testing `adaptive` at `0.2` as a starting point for measuring pointer travel.
+
+## Windows EPP curve
+
+The saved Windows build is `10.0.26200`. The model uses the reported setup of **125% display scaling**, **pointer speed 10/20**, **2400 DPI**, and **125 Hz**.
+
+Each registry curve value contains five 8-byte little-endian entries. Divide each entry by 65,536 to decode its 16.16 fixed-point coordinate, then pair X and Y entries by index. The registry function `f(x)` linearly interpolates between these points.
+
+| Registry X | Registry Y | Modeled horizontal hand speed (cm/s) | Modeled gain (pointer px/raw count) |
+| ---: | ---: | ---: | ---: |
+| 0 | 0 | 0 | 0.7111 (low-speed limit) |
+| 0.430007935 | 1.070266724 | 0.1991 | 0.7111 |
+| 1.25 | 4.140625 | 0.5788 | 0.9464 |
+| 3.860000610 | 18.984375 | 1.7873 | 1.4052 |
+| 40 | 443.75 | 18.5208 | 3.1696 |
+
+The published Windows 11 analysis scales the registry X coordinates by 3.5 and the Y coordinates by `(max(D, 96) / 120) × (S / 10)`, where `D` is the effective DPI of the display region containing the cursor and `S` is the Windows pointer-speed setting. At 125% scaling and speed 10/20, `D = 120` and the Y factor is 1. For each nonzero report, the model uses `r = max(|dx|, |dy|) + min(|dx|, |dy|) / 2` raw counts and gives a steady gain of approximately `f(r / 3.5) / r`. [Windows 11 reverse-engineering notes](https://github.com/junaga/windows-pointer-linux/blob/main/docs/research/windows-11.md)
+
+For steady horizontal motion at hand speed `v` in cm/s, with evenly spaced reports:
+
+```text
+Raw counts per report ≈ (2400 / 2.54 / 125) × v ≈ 7.559055 × v
+Pointer speed (px/s)  ≈ 125 × f(2.159730 × v)
+Gain (px/raw count)   ≈ f(2.159730 × v) / (7.559055 × v), for v > 0
+```
+
+Pointer speed is zero at rest. The modeled gain crosses **1 px/count at 4.7500 counts per report**, equivalent to **0.6284 cm/s** under these assumptions. The endpoint at **18.5208 cm/s** is the last stored breakpoint.
+
+The values and crossover were checked against the saved bytes. The published analysis audited builds `26100.3194` and `28000.2525`. A cursor trace from build `26200` is still needed to validate the model on this setup. Integer report counts, fixed-point rounding, subpixel remainders, and one-report gain blending when entering a higher segment can affect individual swipes.
+
+### Recheck the Windows baseline
+
+1. Confirm **Enhance pointer precision** is checked under **Additional mouse settings > Pointer Options**.
+2. Confirm **125% display scaling** on the monitor used for testing and **2400 DPI / 125 Hz** in the active mouse profile.
+3. Export to a fresh file with `py -3 mousebridge.py export -o windows-mouse-verification.json`. Compare the build, `MouseSensitivity`, `MouseSpeed`, and both curve blobs with the original snapshot.
 
 ## How to read the comparison
 
