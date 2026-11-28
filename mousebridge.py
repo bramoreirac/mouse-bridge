@@ -275,13 +275,21 @@ def yeetmouse_config(registry, display_scale, polling_rate):
     )
 
 
+PLOT_BACKGROUND = "#0d1117"
+PLOT_PANEL = "#161b22"
+PLOT_TEXT = "#f0f6fc"
+PLOT_MUTED = "#b3bfce"
+PLOT_GRID = "#303b49"
+PLOT_REFERENCE = "#778497"
+PLOT_BLUE = "#79c0ff"
+
+
 def draw_panel(draw, font, bounds, title, labels, x_end, y_end, line, knots, unity=False):
     left, top, right, bottom = bounds
-    ink, muted, blue = "#18273b", "#526479", "#1663bb"
-    draw.rounded_rectangle((left - 58, top - 64, right + 30, bottom + 73), 15, fill="white")
-    draw.text((left, top - 49), title, font=font(21), fill=ink)
-    draw.text((left, top - 25), labels[1], font=font(15), fill=muted)
-    draw.text(((left + right) / 2, bottom + 49), labels[0], anchor="mm", font=font(16), fill=ink)
+    draw.rounded_rectangle((left - 58, top - 64, right + 30, bottom + 73), 15, fill=PLOT_PANEL)
+    draw.text((left, top - 49), title, font=font(21), fill=PLOT_TEXT)
+    draw.text((left, top - 25), labels[1], font=font(15), fill=PLOT_MUTED)
+    draw.text(((left + right) / 2, bottom + 49), labels[0], anchor="mm", font=font(16), fill=PLOT_TEXT)
 
     def position(x, y):
         return left + (right - left) * x / x_end, bottom - (bottom - top) * y / y_end
@@ -289,18 +297,18 @@ def draw_panel(draw, font, bounds, title, labels, x_end, y_end, line, knots, uni
     for index in range(6):
         x, y = x_end * index / 5, y_end * index / 5
         col, row = position(x, y)
-        draw.line((col, top, col, bottom), fill="#e6edf4")
-        draw.line((left, row, right, row), fill="#e6edf4")
-        draw.text((col, bottom + 10), f"{x:.3g}", anchor="mt", font=font(14), fill=muted)
-        draw.text((left - 8, row), f"{y:.3g}", anchor="rm", font=font(14), fill=muted)
+        draw.line((col, top, col, bottom), fill=PLOT_GRID)
+        draw.line((left, row, right, row), fill=PLOT_GRID)
+        draw.text((col, bottom + 10), f"{x:.3g}", anchor="mt", font=font(14), fill=PLOT_MUTED)
+        draw.text((left - 8, row), f"{y:.3g}", anchor="rm", font=font(14), fill=PLOT_MUTED)
     if unity and y_end >= 1:
         _, row = position(0, 1)
-        draw.line((left, row, right, row), fill="#a0afc0")
-    draw.line((left, top, left, bottom, right, bottom), fill=muted)
-    draw.line([position(x, y) for x, y in line], fill=blue, width=3)
+        draw.line((left, row, right, row), fill=PLOT_REFERENCE)
+    draw.line((left, top, left, bottom, right, bottom), fill=PLOT_REFERENCE)
+    draw.line([position(x, y) for x, y in line], fill=PLOT_BLUE, width=3)
     for x, y in knots:
         col, row = position(x, y)
-        draw.ellipse((col - 4, row - 4, col + 4, row + 4), fill=blue, outline="white")
+        draw.ellipse((col - 4, row - 4, col + 4, row + 4), fill=PLOT_BLUE, outline=PLOT_PANEL)
 
 
 def plot_windows_curves(registry, scaling, dpi, polling_rate, output):
@@ -322,12 +330,12 @@ def plot_windows_curves(registry, scaling, dpi, polling_rate, output):
     def font(size):
         return ImageFont.load_default(size=size)
 
-    image = Image.new("RGB", (1200, 960), "#f6f8fb")
+    image = Image.new("RGB", (1200, 960), PLOT_BACKGROUND)
     draw = ImageDraw.Draw(image)
-    draw.text((42, 29), "Windows mouse acceleration", font=font(34), fill="#18273b")
+    draw.text((42, 29), "Windows mouse acceleration", font=font(34), fill=PLOT_TEXT)
     draw.text(
         (44, 76), f"Modeled EPP on | Pointer speed {sensitivity}/20 | {scaling:g}% scaling | {dpi:g} DPI | {polling_rate:g} Hz",
-        font=font(18), fill="#526479",
+        font=font(18), fill=PLOT_MUTED,
     )
     for left, suffix, limit in (
         (105, "full stored range", xs[-1]),
@@ -353,7 +361,7 @@ def plot_windows_curves(registry, scaling, dpi, polling_rate, output):
         )
     draw.text(
         (44, 926), "Hand speed assumes steady horizontal motion. Gray line marks 1 pixel per count.",
-        font=font(16), fill="#526479",
+        font=font(16), fill=PLOT_MUTED,
     )
     with output.open("xb") as file:
         image.save(file, format="PNG")
