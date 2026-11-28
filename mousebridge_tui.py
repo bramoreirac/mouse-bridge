@@ -200,8 +200,7 @@ class MouseBridgeApp(App):
             self.report(message)
             return
 
-        if not setup["epp_enabled"]:
-            raise ValueError("Enhance Pointer Precision is off. An EPP-on export requires an EPP-on setup.")
+        bridge.require_epp_on(capture)
         scale, dpi, rate = setup["display_scale"], setup["dpi"], setup["polling_rate"]
         if action == "preview":
             curves = preview_points(registry, scale, dpi, rate)

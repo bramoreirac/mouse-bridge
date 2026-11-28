@@ -148,6 +148,11 @@ def load_snapshot(path, kind):
         raise ValueError(f"{path}: {error}") from error
 
 
+def require_epp_on(windows):
+    if windows.get("setup", {}).get("epp_enabled") is False:
+        raise ValueError("Enhance Pointer Precision is off. An EPP-on export requires an EPP-on setup.")
+
+
 def decode_curve(registry):
     axes = []
     for key in CURVES:
@@ -461,8 +466,9 @@ def main(argv=None):
                 raise ValueError('The TUI requires optional dependencies. Install with pip install ".[tui]".') from error
             MouseBridgeApp().run()
         elif args.command == "plot-wincurves":
-            registry = load_snapshot(args.windows, "windows")["registry"]
-            plot_windows_curves(registry, args.display_scale, args.dpi, args.polling_rate, args.output)
+            windows = load_snapshot(args.windows, "windows")
+            require_epp_on(windows)
+            plot_windows_curves(windows["registry"], args.display_scale, args.dpi, args.polling_rate, args.output)
             print(args.output)
         elif args.command == "analyze":
             windows = load_snapshot(args.windows, "windows")
@@ -470,9 +476,11 @@ def main(argv=None):
             print(comparison(windows, gnome))
         elif args.command == "libinput-curve":
             windows = load_snapshot(args.windows, "windows")
+            require_epp_on(windows)
             write_snapshot(libinput_curve(windows["registry"], args.display_scale, args.polling_rate), args.output)
         elif args.command == "yeetmouse-curve":
             windows = load_snapshot(args.windows, "windows")
+            require_epp_on(windows)
             write_output(yeetmouse_config(windows["registry"], args.display_scale, args.polling_rate), args.output)
         else:
             data = collect_windows() if args.command == "export" else collect_gnome()

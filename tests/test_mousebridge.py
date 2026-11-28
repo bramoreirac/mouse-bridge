@@ -12,6 +12,29 @@ from unittest.mock import MagicMock, patch
 import mousebridge as bridge
 
 
+class EppExportTests(unittest.TestCase):
+    def test_cli_refuses_exports_when_snapshot_confirms_epp_is_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            windows = Path(directory) / "windows.json"
+            output = Path(directory) / "export"
+            bridge.write_snapshot(bridge.snapshot("windows", registry={}, setup={"epp_enabled": False}), windows)
+            for command, extra_flags in (
+                ("yeetmouse-curve", []),
+                ("libinput-curve", []),
+                ("plot-wincurves", ["--dpi", "2400"]),
+            ):
+                with self.subTest(command=command):
+                    args = [
+                        command, str(windows), "--display-scale", "125", "--polling-rate", "125",
+                        "-o", str(output), *extra_flags,
+                    ]
+                    with contextlib.redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as failure:
+                        bridge.main(args)
+                    self.assertEqual(failure.exception.code, 1)
+                    self.assertIn("Enhance Pointer Precision is off", error.getvalue())
+                    self.assertFalse(output.exists())
+
+
 class WindowsTests(unittest.TestCase):
     def test_registry_types_missing_fields_and_curve_bytes(self):
         key = MagicMock()
