@@ -1,0 +1,1 @@
+"""MouseBridge test suite."""

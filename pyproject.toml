@@ -11,8 +11,12 @@ requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 
+[project.optional-dependencies]
+plot = ["Pillow>=10.1"]
+tui = ["textual>=8.2.8,<9", "textual-plot>=0.10.1,<0.11"]
+
 [project.scripts]
 mousebridge = "mousebridge:main"
 
 [tool.setuptools]
-py-modules = ["mousebridge"]
+py-modules = ["mousebridge", "mousebridge_tui"]
